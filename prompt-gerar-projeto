@@ -1,0 +1,67 @@
+Gere um dockerfile production-ready multistage para a seguinte aplicação FastAPI. Siga TODAS as melhores práticas listadas abaixo.
+
+CONTEXTO DA APLICAÇÃO:
+ - Nome: app-api
+ - Linguagem: Python 3.11
+ - Framework: FastAPI + Uvicorn
+ - Arquivo de entrada: app/main.py (função main:app)
+ - Dependências: requirements.txt na raiz do repositório
+ - Cache: Redis 7
+ - SLOs de produção: 
+	* Disponibilidade ≥ 99.9%
+	* Latência p99 < 500ms
+	* Latência p95 < 200ms
+	* Error rate < 0.1%
+ - Porta da exposição: 8000
+ - Health check endpoint: /health
+ 
+ REQUISITOS OBRIGATÓRIOS DO DOCKERFILE:
+ 
+ 1. MULTISTAGE - obrigatório 2 stages:
+	- Stage "builder": python:3.11-slim como base, instala dependências com pip install --no-cache-dir -r requirements.txt em virtualenv
+	- Stage "runtime": python:3.11-slim como base, copia APENAS o virtualenv do builder e o código da aplicação (copia app/)
+	
+ 2. NON-ROOT USER - obrigatório:
+	- Criar usuário e grupo "mbauser" com UID 1000
+	- USER mbauser antes do CMD 
+	- Garantir que o diretório da aplicação pertence ao mba 
+ 
+ 3. LAYER CACHE OTIMIZADO: 
+	- Copiar requirements.txt ANTES de copiar o código da aplicação.
+	- Rodar pip install em layer separada
+	- Copiar o app/ POR ÚLTIMO (muda com mais frequência)
+	
+ 4. HEALTH CHECK: 
+	- Usar HEALTHCHECK com curl --fail http://localhost:8000/health
+	- Interval: 30s, Timeout: 5s, Retries: 3, Start-period: 10s
+ 
+ 5. TAMANHO ALVO:
+	- Imagem final < 100MB ( usar --no-cache-dir, não incluir build tools no runtime) 
+	- Remover apt lists e cache no final de cada stage 
+ 
+ 6. VARIÁVEIS DE AMBIENTE:
+	- PYTHONDONTWRITEBYTECODE=1
+	- PYTHONBUFFERED=1
+	- PORT=8000
+	- NÃO incluir DATABASE_URL ou REDIS_URL (desses vêm de configmaps/secrets no K8s ou env vars no compose)  
+ 
+ 7. WORKDIR e ESTRUTURA:
+	- WORKDIR /app
+	- Código da aplicação fica em /app/app (módulo Python "app")
+	- Copiar requirements.txt para /app/requirements.txt
+	- Copiar pasta app/ para /app/app/
+	- PYTHONPATH não precisa ser setado (WORKDIR=/app já resolve)
+	- CMD: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+	
+ 8. EXPOSE E CMD:
+	- EXPOSE 8000
+	- CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"
+	]
+ 
+ NÃO inclua:
+	- Variáveis de ambiente com secrets ou credenciais
+	- Ferramentas de debug (gdb, strace, etc.)
+	- Build-essentials ou compiladores no stage final 
+	- Entrypoint shell scripts complexos
+
+ FORMATO DE SAÍDA: Crie o arquivo `Dockerfile` diretamente na raiz do repositório. Não explique o código, apenas gere o arquivo completo.
